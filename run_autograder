@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+cd /autograder/source || exit 1
+mkdir -p /autograder/results
+
+# Preserve common zyBooks path conventions used by notebook code.
+mkdir -p /usercode /usercode/negsel_src
+ln -sfn /autograder/source/negsel.jar /usercode/negsel.jar
+ln -sfn /autograder/source/negsel.jar /usercode/negsel_src/negsel.jar
+ln -sfn /autograder/source/cardio_train.csv /usercode/cardio_train.csv
+ln -sfn /autograder/source/cardio_test.csv /usercode/cardio_test.csv
+ln -sfn /autograder/source/cardio.labels /usercode/cardio.labels
+
+# Prefer the student's submitted student_solution.py over source files.
+export PYTHONPATH=/autograder/submission:/autograder/source:/autograder/source/tests:$PYTHONPATH
+
+python3 tests/grade_project4.py > /autograder/results/results.txt 2>&1
+status=$?
+
+if [ "$status" -ne 0 ] || [ ! -f /autograder/results/results.json ]; then
+cat <<JSON > /autograder/results/results.json
+{
+  "score": 0,
+  "visibility": "visible",
+  "stdout_visibility": "visible",
+  "output": "Autograder failed before producing results. See results.txt for details.",
+  "tests": [
+    {
+      "score": 0,
+      "max_score": 100,
+      "name": "Autograder execution",
+      "output": "Autograder failed before producing results. See results.txt for details."
+    }
+  ]
+}
+JSON
+fi
