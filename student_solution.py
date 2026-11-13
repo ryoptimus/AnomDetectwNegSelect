@@ -6,42 +6,37 @@ from pathlib import Path
 from sklearn.metrics import auc
 
 TRAIN_FILE = "cardio_train.csv"
+PTRAIN_FILE = "cardio_train_processed.csv"
 TEST_FILE = "cardio_test.csv"
+PTEST_FILE = "cardio_test_processed.csv"
 LABEL_FILE = "cardio.labels"
 NGA_FILE = "negsel.jar"
 
 def process_data(in_fp):
     df = pd.read_csv(in_fp)
-    labels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
-    feats = []
-    for i in range(21):
-        feats.append(f"x_{i}")
+
+    labels = list("ABCDEFGHIJ")
+    feats = [f"x_{i}" for i in range(21)]
 
     for feat in feats:
-        df[feat] = pd.cut(df[feat], bins=10, labels=labels)
+        df[feat] = pd.cut(
+            df[feat],
+            bins=10,
+            labels=labels,
+            right=(feat != "x_20")
+        )
 
-    processed = []
+    processed = df[feats].agg("".join, axis=1)
 
-    for index, row in df[feats].iterrows():
-        row_str = ""
-
-        # form complete string
-        for feat in feats:
-            letter = row[feat]
-            row_str += str(letter)
-
-        processed.append(row_str)
-
-    print(processed)
     out_fp = in_fp.replace(".csv", "_processed.csv")
-
-    processed = pd.Series(processed)
     processed.to_csv(out_fp, index=False, header=False)
 
     return out_fp
 
-def anom_scores(fp):
-    args = ["java", "-jar", NGA_FILE, "-n", "10", "-r", "4", "-self", TRAIN_FILE,]
+def anom_scores(fp, r):
+    #java_path = "/mnt/c/Program Files/Common Files/Oracle/Java/javapath/java.exe"
+    java_path = "java"
+    args = [java_path, "-jar", NGA_FILE, "-n", "21", "-r", str(r), "-self", PTRAIN_FILE,]
     with open(fp, "r", encoding="utf-8") as f:
         res = subprocess.run(args=args, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,check=False)
     if res.returncode != 0:
@@ -50,10 +45,9 @@ def anom_scores(fp):
 
     return score_tup
 
-def final_anom(fp):
-    print(f"Yay final_anom({fp})!")
+def final_anom(fp, r):
     a_sum = 0.0
-    for val in anom_scores(fp):
+    for val in anom_scores(fp, r):
         if val == 0:
             val = 1e-6
         a_sum += math.log(val)
@@ -67,9 +61,8 @@ def get_labels():
 
     return label_tup
 
-def fp_tp_calc(fp, theta):
-    print(f"Yay fp_tp_calc({fp}, {theta})!")
-    s_vals = anom_scores(fp)
+def fp_tp_calc(fp, theta, r):
+    s_vals = anom_scores(fp, r)
     l_vals = get_labels()
 
     # How to determine normal vs anomaly? Get labels
@@ -91,12 +84,8 @@ def fp_tp_calc(fp, theta):
     # RETURN: (fpr, tpr)
     return (fpr, tpr)
 
-def auc_calc(fp):
-    print(f"Yay auc_calc({fp})!")
-    # Int threshold vals range(0, 11)
-    # call fptpcalc to get roc point in (FPR, TPR) form
-    # Use the trapezoidal rule to calculate the area under the ROC curve. You may implement the trapezoidal rule manually or use sklearn.metrics.auc
-    points = [fp_tp_calc(fp, theta) for theta in range(0, 11)]
+def auc_calc(fp, r):
+    points = [fp_tp_calc(fp, theta, r) for theta in range(11)]
 
     # ascending order
     points.sort(key=lambda point: point[0])
@@ -107,10 +96,22 @@ def auc_calc(fp):
 
     return auc(fpr, tpr)
 
-def main():
-    print("Hello world!")
+def r_auc_tuple(fp):
     ptrain_fp = process_data(TRAIN_FILE)
-    print(f"processed train file: {ptrain_fp}")
+    processed_test = process_data(fp)
+
+    tuples = []
+
+    for r in range(2, 11):
+        auc_val = auc_calc(processed_test, r)
+        tuples.append((r, auc_val))
+
+    return tuples
+
+def main():
+    ra_tups = r_auc_tuple(TEST_FILE)
 
 if __name__ == "__main__":
     main()
+
+
